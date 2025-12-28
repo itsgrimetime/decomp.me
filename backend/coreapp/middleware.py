@@ -89,6 +89,16 @@ def set_user_profile(
             request.profile = Profile()
             return get_response(request)
 
+        # API clients (like melee-agent) share a single profile to avoid
+        # session conflicts when multiple agents work in parallel
+        if request.headers.get("X-API-Client") == "melee-agent":
+            profile, _ = Profile.objects.get_or_create(
+                pseudonym="API Agent",
+                defaults={"pseudonym": "API Agent"}
+            )
+            request.profile = profile
+            return get_response(request)
+
         profile = None
 
         # Try user-linked profile

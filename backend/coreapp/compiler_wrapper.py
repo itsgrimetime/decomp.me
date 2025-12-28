@@ -50,7 +50,8 @@ else:
     PATH = os.environ["PATH"]
 
 WINE = "wine"
-WIBO = "wibo"
+# Use wine instead of wibo for better compatibility with Rosetta/ARM Macs
+WIBO = "wine"
 
 
 @dataclass
