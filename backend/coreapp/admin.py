@@ -9,6 +9,7 @@ from .models.scratch import (
     Asm,
     Assembly,
     AssemblyAdmin,
+    Context,
     Scratch,
     ScratchAdmin,
 )
@@ -17,6 +18,7 @@ admin.site.register(Profile, ProfileAdmin)
 admin.site.register(GitHubUser)
 admin.site.register(Asm)
 admin.site.register(Assembly, AssemblyAdmin)
+admin.site.register(Context)
 admin.site.register(Scratch, ScratchAdmin)
 admin.site.register(Preset, PresetAdmin)
 admin.site.register(Project)

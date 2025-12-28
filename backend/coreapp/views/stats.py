@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 
 from ..decorators.cache import globally_cacheable
 
-from ..models.scratch import Asm, Scratch
+from ..models.scratch import Asm, Context, Scratch
 from ..models.github import GitHubUser
 
 
@@ -18,6 +18,7 @@ class StatsDetail(APIView):
         return Response(
             {
                 "asm_count": Asm.objects.count(),
+                "context_count": Context.objects.count(),
                 "scratch_count": Scratch.objects.count(),
                 "github_user_count": GitHubUser.objects.count(),
             }

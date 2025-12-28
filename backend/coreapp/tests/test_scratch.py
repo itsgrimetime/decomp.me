@@ -5,7 +5,7 @@ import zipfile
 
 from coreapp import compilers, platforms
 from coreapp.compilers import GCC281PM, IDO53, IDO71, MWCC_242_81, EE_GCC29_991111
-from coreapp.models.scratch import Assembly, Scratch
+from coreapp.models.scratch import Assembly, Context, Scratch
 from coreapp.platforms import GC_WII, N64
 from coreapp.tests.common import BaseTestCase, requiresCompiler
 from coreapp.views.scratch import compile_scratch_update_score
@@ -533,3 +533,156 @@ class ScratchExportTests(BaseTestCase):
         self.assertIn("code.c", file_names)
         self.assertIn("ctx.c", file_names)
         self.assertNotIn("current.o", file_names)
+
+
+class ContextDeduplicationTests(BaseTestCase):
+    """Tests for context deduplication (issue #1739)"""
+
+    def test_duplicate_context_shared(self) -> None:
+        """
+        Ensure that scratches with identical context share the same Context object.
+        """
+        shared_context = "typedef int s32;\ntypedef unsigned int u32;"
+
+        scratch1_dict = {
+            "compiler": compilers.DUMMY.id,
+            "platform": platforms.DUMMY.id,
+            "context": shared_context,
+            "target_asm": "jr $ra\nnop\n",
+        }
+        scratch2_dict = {
+            "compiler": compilers.DUMMY.id,
+            "platform": platforms.DUMMY.id,
+            "context": shared_context,
+            "target_asm": "jr $ra\nli $v0, 1\n",
+        }
+
+        scratch1 = self.create_scratch(scratch1_dict)
+        scratch2 = self.create_scratch(scratch2_dict)
+
+        # Both should have context_obj set
+        self.assertIsNotNone(scratch1.context_obj)
+        self.assertIsNotNone(scratch2.context_obj)
+
+        # They should share the same Context object
+        self.assertEqual(scratch1.context_obj.hash, scratch2.context_obj.hash)
+        self.assertEqual(scratch1.context_obj_id, scratch2.context_obj_id)
+
+        # Only one Context record should exist for this context
+        self.assertEqual(Context.objects.filter(hash=scratch1.context_obj.hash).count(), 1)
+
+    def test_different_context_separate(self) -> None:
+        """
+        Ensure that scratches with different context have separate Context objects.
+        """
+        scratch1_dict = {
+            "compiler": compilers.DUMMY.id,
+            "platform": platforms.DUMMY.id,
+            "context": "typedef int s32;",
+            "target_asm": "jr $ra\nnop\n",
+        }
+        scratch2_dict = {
+            "compiler": compilers.DUMMY.id,
+            "platform": platforms.DUMMY.id,
+            "context": "typedef unsigned int u32;",
+            "target_asm": "jr $ra\nnop\n",
+        }
+
+        scratch1 = self.create_scratch(scratch1_dict)
+        scratch2 = self.create_scratch(scratch2_dict)
+
+        # Both should have context_obj set
+        self.assertIsNotNone(scratch1.context_obj)
+        self.assertIsNotNone(scratch2.context_obj)
+
+        # They should have different Context objects
+        self.assertNotEqual(scratch1.context_obj.hash, scratch2.context_obj.hash)
+
+    def test_empty_context_no_context_obj(self) -> None:
+        """
+        Ensure that scratches with empty context don't create a Context object.
+        """
+        scratch_dict = {
+            "compiler": compilers.DUMMY.id,
+            "platform": platforms.DUMMY.id,
+            "context": "",
+            "target_asm": "jr $ra\nnop\n",
+        }
+
+        scratch = self.create_scratch(scratch_dict)
+
+        # Empty context should not create a context_obj
+        self.assertIsNone(scratch.context_obj)
+
+    def test_context_in_api_response(self) -> None:
+        """
+        Ensure that context is correctly returned in API responses via serializer.
+        """
+        context_text = "// This is my context\ntypedef int s32;"
+
+        scratch_dict = {
+            "compiler": compilers.DUMMY.id,
+            "platform": platforms.DUMMY.id,
+            "context": context_text,
+            "target_asm": "jr $ra\nnop\n",
+        }
+
+        scratch = self.create_scratch(scratch_dict)
+
+        # Fetch via API
+        response = self.client.get(reverse("scratch-detail", args=[scratch.slug]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Context should be returned as the string value
+        self.assertEqual(response.json()["context"], context_text)
+
+        # context_obj should NOT be in the response (excluded from serializer)
+        self.assertNotIn("context_obj", response.json())
+
+    def test_fork_shares_context(self) -> None:
+        """
+        Ensure that forking a scratch shares the same Context object.
+        """
+        context_text = "typedef int s32;"
+
+        scratch_dict = {
+            "compiler": compilers.DUMMY.id,
+            "platform": platforms.DUMMY.id,
+            "context": context_text,
+            "target_asm": "jr $ra\nnop\n",
+        }
+
+        parent = self.create_scratch(scratch_dict)
+
+        # Fork the scratch
+        response = self.client.post(reverse("scratch-fork", args=[parent.slug]))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        fork = Scratch.objects.get(slug=response.json()["slug"])
+
+        # Fork should have the same context_obj
+        self.assertIsNotNone(fork.context_obj)
+        self.assertEqual(parent.context_obj_id, fork.context_obj_id)
+
+    def test_context_dedup_stats(self) -> None:
+        """
+        Ensure that the stats endpoint includes context_count.
+        """
+        # Create some scratches with shared context
+        shared_context = "typedef int s32;"
+        for _ in range(3):
+            self.create_scratch({
+                "compiler": compilers.DUMMY.id,
+                "platform": platforms.DUMMY.id,
+                "context": shared_context,
+                "target_asm": "jr $ra\nnop\n",
+            })
+
+        response = self.client.get(reverse("stats-detail"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Stats should include context_count
+        self.assertIn("context_count", response.json())
+
+        # Should only have 1 unique context despite 3 scratches
+        self.assertEqual(response.json()["context_count"], 1)

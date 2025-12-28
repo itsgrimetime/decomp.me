@@ -33,6 +33,14 @@ class Asm(models.Model):
         return self.data if len(self.data) < 20 else self.data[:17] + "..."
 
 
+class Context(models.Model):
+    hash = models.CharField(max_length=64, primary_key=True)
+    data = models.TextField()
+
+    def __str__(self) -> str:
+        return self.hash[:8] + "..."
+
+
 class Assembly(models.Model):
     hash = models.CharField(max_length=64, primary_key=True)
     time = models.DateTimeField(auto_now_add=True)
@@ -92,6 +100,9 @@ class Scratch(models.Model):
     target_assembly = models.ForeignKey(Assembly, on_delete=models.CASCADE)
     source_code = models.TextField(blank=True)
     context = models.TextField(blank=True)
+    context_obj = models.ForeignKey(
+        Context, null=True, blank=True, on_delete=models.PROTECT
+    )
     diff_label = models.CharField(
         max_length=1024, blank=True
     )  # blank means diff from the start of the file
@@ -142,5 +153,5 @@ class Scratch(models.Model):
 
 
 class ScratchAdmin(admin.ModelAdmin[Scratch]):
-    raw_id_fields = ["owner", "parent", "family"]
+    raw_id_fields = ["owner", "parent", "family", "context_obj"]
     readonly_fields = ["target_assembly"]

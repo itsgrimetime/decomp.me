@@ -36,7 +36,7 @@ from ..flags import Language
 from ..libraries import Library
 from ..middleware import Request
 from ..models.preset import Preset
-from ..models.scratch import Asm, Assembly, Scratch
+from ..models.scratch import Asm, Assembly, Context, Scratch
 from ..platforms import Platform
 from ..serializers import (
     ClaimableScratchSerializer,
@@ -62,6 +62,19 @@ def get_db_asm(request_asm: str) -> Asm:
         },
     )
     return asm
+
+
+def get_db_context(context_str: str) -> Optional[Context]:
+    if not context_str:
+        return None
+    h = hashlib.sha256(context_str.encode()).hexdigest()
+    ctx, _ = Context.objects.get_or_create(
+        hash=h,
+        defaults={
+            "data": context_str,
+        },
+    )
+    return ctx
 
 
 # 1 MB
@@ -93,13 +106,20 @@ def cache_object(platform: Platform, file: File[Any]) -> Assembly:
     return assembly
 
 
+def get_scratch_context(scratch: Scratch) -> str:
+    """Get context string from scratch, preferring deduplicated context_obj."""
+    if scratch.context_obj:
+        return scratch.context_obj.data
+    return scratch.context
+
+
 def compile_scratch(scratch: Scratch) -> CompilationResult:
     try:
         return CompilerWrapper.compile_code(
             compilers.from_id(scratch.compiler),
             scratch.compiler_flags,
             scratch.source_code,
-            scratch.context,
+            get_scratch_context(scratch),
             scratch.diff_label,
             tuple(scratch.libraries),
         )
@@ -236,6 +256,8 @@ def create_scratch(data: Dict[str, Any], allow_project: bool = False) -> Scratch
         Library(**lib) if isinstance(lib, dict) else lib for lib in data["libraries"]
     ]
 
+    context_obj = get_db_context(context)
+
     ser = ScratchSerializer(
         data={
             "name": name,
@@ -253,6 +275,7 @@ def create_scratch(data: Dict[str, Any], allow_project: bool = False) -> Scratch
         target_assembly=assembly,
         platform=platform.id,
         libraries=libraries,
+        context_obj=context_obj,
     )
 
     compile_scratch_update_score(scratch)
@@ -288,7 +311,7 @@ class ScratchViewSet(
 
     queryset = (
         Scratch.objects.all()
-        .select_related("owner__user__github")
+        .select_related("owner__user__github", "context_obj")
         .annotate(match_percent=match_percent)
     )
     pagination_class = ScratchPagination
@@ -372,6 +395,7 @@ class ScratchViewSet(
                 scratch.source_code = request.data["source_code"]
             if "context" in request.data:
                 scratch.context = request.data["context"]
+                scratch.context_obj = get_db_context(request.data["context"])
             if "libraries" in request.data:
                 libs = [Library(**lib) for lib in request.data["libraries"]]
                 scratch.libraries = libs
@@ -417,7 +441,7 @@ class ScratchViewSet(
                 }
             )
 
-        context = request.data.get("context", scratch.context)
+        context = request.data.get("context", get_scratch_context(scratch))
         compiler = compilers.from_id(request.data.get("compiler", scratch.compiler))
 
         platform = platforms.from_id(scratch.platform)

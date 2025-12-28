@@ -253,6 +253,7 @@ class ScratchSerializer(serializers.ModelSerializer[Scratch]):
         exclude = [
             "claim_token",
             "target_assembly",
+            "context_obj",
         ]
         read_only_fields = [
             "parent",
@@ -261,6 +262,13 @@ class ScratchSerializer(serializers.ModelSerializer[Scratch]):
             "creation_time",
             "platform",
         ]
+
+    def to_representation(self, instance: Scratch) -> Dict[str, Any]:
+        ret = super().to_representation(instance)
+        # Use deduplicated context if available, else fallback to TextField
+        if instance.context_obj:
+            ret["context"] = instance.context_obj.data
+        return ret
 
     def get_language(self, scratch: Scratch) -> str:
         """
