@@ -270,6 +270,13 @@ class ScratchSerializer(serializers.ModelSerializer[Scratch]):
             ret["context"] = instance.context_obj.data
         return ret
 
+    def update(self, instance: Scratch, validated_data: Dict[str, Any]) -> Scratch:
+        # Handle context_obj when context is updated
+        if "context" in validated_data:
+            from coreapp.views.scratch import get_db_context
+            instance.context_obj = get_db_context(validated_data["context"])
+        return super().update(instance, validated_data)
+
     def get_language(self, scratch: Scratch) -> str:
         """
         Strategy for extracting a scratch's language:

@@ -91,6 +91,14 @@ export function useUserIsYou(): (
     ); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
+// Check if owner is the shared API Agent profile (created by automated tooling)
+// These scratches are editable by anyone
+export function isApiAgentOwned(
+    owner: AnonymousUser | User | null | undefined,
+): boolean {
+    return owner?.is_anonymous === true && owner.username === "API Agent (anon)";
+}
+
 export function useSavedScratch(scratch: Scratch): Scratch {
     const { data: savedScratch, error } = useSWR(scratchUrl(scratch), get, {
         fallbackData: scratch, // No loading state, just use the local scratch
@@ -109,7 +117,7 @@ export function useSaveScratch(localScratch: Scratch): () => Promise<Scratch> {
         if (!localScratch) {
             throw new Error("Cannot save scratch before it is loaded");
         }
-        if (!userIsYou(localScratch.owner)) {
+        if (!userIsYou(localScratch.owner) && !isApiAgentOwned(localScratch.owner)) {
             throw new Error("Cannot save scratch which you do not own");
         }
 

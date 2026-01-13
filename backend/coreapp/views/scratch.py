@@ -36,6 +36,7 @@ from ..flags import Language
 from ..libraries import Library
 from ..middleware import Request
 from ..models.preset import Preset
+from ..models.profile import Profile
 from ..models.scratch import Asm, Assembly, Context, Scratch
 from ..platforms import Platform
 from ..serializers import (
@@ -46,6 +47,22 @@ from ..serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The pseudonym used by the shared API Agent profile (see middleware.py)
+API_AGENT_PSEUDONYM = "API Agent"
+
+
+def is_api_agent_owned(scratch: Scratch) -> bool:
+    """Check if a scratch is owned by the shared API Agent profile.
+
+    Scratches owned by the API Agent are editable by anyone, since they were
+    created by automated tooling (like melee-agent) rather than a specific user.
+    """
+    return (
+        scratch.owner is not None
+        and scratch.owner.user is None  # API Agent has no linked user
+        and scratch.owner.pseudonym == API_AGENT_PSEUDONYM
+    )
 
 
 class ProjectNotMemberException(APIException):
@@ -169,8 +186,9 @@ def compile_scratch_update_score(scratch: Scratch) -> None:
 
 
 def scratch_last_modified(
-    request: Request, pk: Optional[str] = None
+    request: Request, pk: Optional[str] = None, **kwargs: Any
 ) -> Optional[datetime]:
+    # Accept **kwargs to handle extra params like partial=True from DRF PATCH
     scratch: Optional[Scratch] = Scratch.objects.filter(slug=pk).first()
     if scratch:
         return scratch.last_updated
@@ -346,7 +364,8 @@ class ScratchViewSet(
     def update(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         # Check permission
         scratch = self.get_object()
-        if scratch.owner != request.profile:
+        # Allow edits if: owner matches, or scratch is owned by the shared API Agent
+        if scratch.owner != request.profile and not is_api_agent_owned(scratch):
             response = self.retrieve(request, *args, **kwargs)
             response.status_code = status.HTTP_403_FORBIDDEN
             return response

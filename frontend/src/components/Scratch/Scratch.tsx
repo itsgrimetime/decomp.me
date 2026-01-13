@@ -252,7 +252,10 @@ export default function Scratch({
                             <AboutPanel
                                 scratch={scratch}
                                 setScratch={
-                                    userIsYou(scratch.owner) ? setScratch : null
+                                    userIsYou(scratch.owner) ||
+                                    api.isApiAgentOwned(scratch.owner)
+                                        ? setScratch
+                                        : null
                                 }
                             />
                         )}

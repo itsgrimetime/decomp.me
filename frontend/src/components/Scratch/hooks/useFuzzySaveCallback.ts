@@ -17,7 +17,7 @@ export default function useFuzzySaveCallback(
     const userIsYou = api.useUserIsYou();
 
     let action = FuzzySaveAction.NONE;
-    if (userIsYou(scratch.owner)) {
+    if (userIsYou(scratch.owner) || api.isApiAgentOwned(scratch.owner)) {
         action = FuzzySaveAction.SAVE;
     } else {
         action = FuzzySaveAction.FORK;

@@ -202,7 +202,9 @@ function Actions({
     const [isSaving, setIsSaving] = useState(false);
     const [isForking, setIsForking] = useState(false);
 
-    const canSave = scratch.owner && userIsYou(scratch.owner);
+    const canSave =
+        scratch.owner &&
+        (userIsYou(scratch.owner) || api.isApiAgentOwned(scratch.owner));
 
     const platform = api.usePlatform(scratch.platform);
 
@@ -388,7 +390,10 @@ export default function ScratchToolbar(props: Props) {
                                         <ScratchName
                                             name={scratch.name}
                                             onChange={
-                                                userIsYou(scratch.owner) &&
+                                                (userIsYou(scratch.owner) ||
+                                                    api.isApiAgentOwned(
+                                                        scratch.owner,
+                                                    )) &&
                                                 ((name) => setScratch({ name }))
                                             }
                                         />
